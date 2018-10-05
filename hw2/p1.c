@@ -96,7 +96,6 @@ static void sig_int_handler( int sig ) {
 } // end sig_int_handler function
 
 
-// QUESTION: what is the point of passing in sig?
 static void sig_child_handler( int sig ) {
 
 	// -------------------------------------
@@ -104,9 +103,11 @@ static void sig_child_handler( int sig ) {
 	// -------------------------------------
 	// You complete child signal handler code to remove child process from process 
 	// table (i.e. reap the child)
+	//
+	//https://linux.die.net/man/2/waitpid
 	// -------------------------------------
 	
-	printf("Removing child process from process table");
-	pid_t child_pid = wait(NULL);
+	while(waitpid(-1, 0, WNOHANG) > 0){}
+	printf("Removed child process from process table\n");
 
 } // end sig_child_handler function

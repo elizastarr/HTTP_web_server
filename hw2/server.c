@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include "server.h"
 
 // ------------------------------------
@@ -83,6 +84,7 @@ int accept_client( int server_socket_fd ) {
 
 	struct sockaddr_in client_address;
 
+	char request[2048];
 
 	client_length = sizeof( client_address );
 
@@ -105,7 +107,7 @@ int accept_client( int server_socket_fd ) {
 			read( client_socket_fd, request, 511 );
 			
 			if ( DEBUG ) {
-				printf("Here is the http message:\n%s\n\n", request );
+				printf("Here is the http request:\n%s\n\n", request );
 			}
 
 			// declare the entitiy_body which will be filled by GET or POST if-else branches
@@ -159,6 +161,11 @@ int accept_client( int server_socket_fd ) {
 			
 			// checking if a string contains a string. Returns NULL if does not contain.
 			//http://man7.org/linux/man-pages/man3/strstr.3.html
+			// parsing string
+			//https://stackoverflow.com/questions/3217629/how-do-i-find-the-index-of-a-character-within-a-string-in-c
+			//http://man7.org/linux/man-pages/man3/strchr.3.html
+			//https://www.quora.com/How-do-I-convert-a-char-to-string-in-C
+			//https://www.tutorialspoint.com/cprogramming/c_file_io.htm
 
 			// REQUEST FORMAT	
 			// |method|sp|URL|sp|version|cr|lf|
@@ -166,38 +173,131 @@ int accept_client( int server_socket_fd ) {
 			// ...
 			// |cr|lf| 
 			// |entity_body|
-			------------------------------------------------------
+			// ------------------------------------------------------
 			*/
 
 			// GET request
 			// |GET| |URL| |HTTP/1.1|\r|\n|
-				// |header_field_name| |value|\r|\n|
-				// ...
-				// |\r|\n| 
-				// ||
-			if(strstr(request, "GET") != NULL) {
-				printf("GET");
-				
+			// |header_field_name| |value|\r|\n|
+			// ...
+			// |\r|\n| 
+			// ||
+			if(strstr(request, "GET")) {
+				// VERSION
+				char *version = strstr(request, "HTTP/1.1");
+				int version_inx = version - request;
 
+				// URL
+				int begin_url_inx = 4;
+				//printf("begin_url %c", request[begin_url_inx]);
+				int end_url_inx = (int)(version_inx - 2);
+				//printf("end_url %c\n", request[end_url_inx]);
+				int url_length = end_url_inx - begin_url_inx;
+
+				// if there is a URL
+				if(url_length > 0) {
+
+					// URL CONTENT
+					char* url_content = malloc(2000);
+					strncpy(url_content, request + begin_url_inx + 1, url_length);
+					printf("url content %s ",  url_content);
+
+					// KEY VALUE
+					int begin_key_value = (int)(strchr(url_content, '?') - url_content);
+					
+					// FILE
+					char* file = "SimplePost.html";
+
+					// if requesting SimplePost.html
+					if (strstr(url_content, file)) {
+						FILE* file_obj;
+						file_obj = fopen(file, "r");
+						char line[50];
+
+						if (file_obj != NULL) {
+							while ( fgets(line, sizeof(line), file_obj) != NULL ) {
+								strcat(entity_body, line);
+							}
+						}
+
+						fclose(file_obj);
+					}
+
+					// else there may be key value pairs
+					else {
+						strcat(entity_body, "<html><body><h1>GET Operation</h1>");
+
+						// there are key-value pairs
+						if(strchr(url_content, '?') != NULL) {
+							char table [2000] = "<table cellpadding=5 cellspacing=5 border=1><tr><td><b>";
+
+							// how many key-value pairs?
+							int num_pairs = 0;
+							for (int i = 0; i < url_length; i++)
+							{
+								if (url_content[begin_key_value + i] == '&') num_pairs++;
+							}
+
+							int count = 0;
+							for(int i = 1; i < url_length; i++) {
+								//printf("%c", url_content[begin_key_value + i]);
+								if(url_content[begin_key_value + i] == '=') {
+									strcat(table, "</b></td><td>");
+								}
+								else if (url_content[begin_key_value + i] == '&') {
+									if(count < num_pairs) {
+										strcat(table, "</td></tr><tr><td><b>");
+										count ++;
+									}
+									else {
+										strcat(table, "</td></tr>");
+									}	
+								}
+								else {
+									char str_char[2];
+									str_char[0] = url_content[begin_key_value + i];
+									str_char[1] = '\0';
+									strcat(table, str_char);
+								}
+							}
+
+							strcat(table, "</td></tr><table>");
+							strcat(entity_body, table);
+						}
+
+						strcat(entity_body, "</body></html>");
+					}
+				}
+
+				// there is no url
+				else {
+					strcat(entity_body, "<h1>400</h1><b>Bad Request: missing a URL.");
+				}
 			}
-
+			
+			// ------------------------------------------------------
 			// POST request
 			// |POST| |http://127.0.0.1/SimplePost.html| |HTTP/1.1|\r|\n|
-				// |header_field_name| |value|\r|\n|
-				// ...
-				// |\r|\n| 
-				// |entity_body|
-			else if(strstr(request, "POST") != NULL) {
-				printf("POST");
+			// |header_field_name| |value|\r|\n|
+			// ...
+			// |\r|\n| 
+			// |entity_body|
+			else if(strstr(request, "POST")) {
+				//strcat(entity_body, "<html><body><h1>POST Operation</h1><table cellpadding=5 cellspacing=5 border=1>");
 				
+				char* begin_req_body = strstr(request, "\r\n\r\n");
+				int begin_req_body_inx = begin_req_body - request;
+				char* req_body_content = malloc(20000);
+				strncpy(req_body_content, request + begin_req_body_inx + 1, 10);
+				printf("%s", req_body_content);
 
 			}
-			// ERROR
+
+			// ------------------------------------------------------
+			// UNKNOWN REQUEST
 			else {
 				// need to change entity body, create response, and return from method
-				printf("Unknown HTTP request.");
-
-				//change entitiy body?
+				strcat(entity_body, "<h1>400</h1><b>Unknown HTTP request.");
 
 				//------------------------------------------------------
 				// Package up and send off response
