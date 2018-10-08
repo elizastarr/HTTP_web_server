@@ -22,5 +22,5 @@ run:
 	./p1 8888
 
 tarball:
-	tar -cvzf p1sol.tar.gz *
+	tar -cvzf starr.tar.gz p1.c server.c server.h SimplePost.html Makefile
 

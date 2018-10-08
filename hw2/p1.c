@@ -107,7 +107,7 @@ static void sig_child_handler( int sig ) {
 	//https://linux.die.net/man/2/waitpid
 	// -------------------------------------
 	
-	while(waitpid(-1, 0, WNOHANG) > 0){}
-	printf("Removed child process from process table\n");
+	pid_t cpid = wait(NULL);
+	//printf("Removed child process with process id %d from process table\n", cpid);
 
 } // end sig_child_handler function

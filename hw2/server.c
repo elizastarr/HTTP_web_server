@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "server.h"
+#include <sys/wait.h>
 
 // ------------------------------------
 // Function prototype that creates a socket and 
@@ -76,6 +77,7 @@ int bind_port( unsigned int port_number ) {
 // 	browser connects to server, send over 
 int accept_client( int server_socket_fd ) {
 
+	//printf("\n Accepted client \n");
 	int exit_status = OK;
 
 	int client_socket_fd = -1;
@@ -84,7 +86,7 @@ int accept_client( int server_socket_fd ) {
 
 	struct sockaddr_in client_address;
 
-	char request[2048];
+	char request[1024];
 
 	client_length = sizeof( client_address );
 
@@ -95,23 +97,26 @@ int accept_client( int server_socket_fd ) {
 	// -------------------------------------
 	// Modify code to fork a child process
 	// -------------------------------------
+
+	//printf("\nclient_socket_fd %d\n", client_socket_fd);
 	
 	if ( client_socket_fd >= 0 ) {
 
-		if(fork()==0){
+		int pid = fork();
+		if(pid == 0){
 			//all stuff the child needs to handle:
 
 			// character buffer, he has 2048. The bigger the more info the browser can send to server
-			bzero( request, 512 );
+			bzero( request, 1024 );
 			
-			read( client_socket_fd, request, 511 );
+			read( client_socket_fd, request, 1024 );
 			
 			if ( DEBUG ) {
 				printf("Here is the http request:\n%s\n\n", request );
 			}
 
 			// declare the entitiy_body which will be filled by GET or POST if-else branches
-			char entity_body[2000];
+			char entity_body[1024];
 			
 			// -------------------------------------
 			// TODO:
@@ -182,7 +187,8 @@ int accept_client( int server_socket_fd ) {
 			// ...
 			// |\r|\n| 
 			// ||
-			if(strstr(request, "GET")) {
+
+			if(strstr(request, "GET") != NULL ) {
 				// VERSION
 				char *version = strstr(request, "HTTP/1.1");
 				int version_inx = version - request;
@@ -198,15 +204,17 @@ int accept_client( int server_socket_fd ) {
 				if(url_length > 0) {
 
 					// URL CONTENT
-					char* url_content = malloc(2000);
+					char* url_content = malloc(512);
 					strncpy(url_content, request + begin_url_inx + 1, url_length);
-					printf("url content %s ",  url_content);
+					//printf("url content %s ",  url_content);
 
 					// KEY VALUE
 					int begin_key_value = (int)(strchr(url_content, '?') - url_content);
 					
 					// FILE
 					char* file = "SimplePost.html";
+
+					strcpy(entity_body, "");
 
 					// if requesting SimplePost.html
 					if (strstr(url_content, file)) {
@@ -219,17 +227,17 @@ int accept_client( int server_socket_fd ) {
 								strcat(entity_body, line);
 							}
 						}
-
 						fclose(file_obj);
+						//printf("\nFILE CLOSED: %d", status);
 					}
 
 					// else there may be key value pairs
 					else {
-						strcat(entity_body, "<html><body><h1>GET Operation</h1>");
+						strcpy(entity_body, "<html><body><h1>GET Operation</h1>");
 
 						// there are key-value pairs
 						if(strchr(url_content, '?') != NULL) {
-							char table [2000] = "<table cellpadding=5 cellspacing=5 border=1><tr><td><b>";
+							char table [512] = "<table cellpadding=5 cellspacing=5 border=1><tr><td><b>";
 
 							// how many key-value pairs?
 							int num_pairs = 0;
@@ -271,7 +279,7 @@ int accept_client( int server_socket_fd ) {
 
 				// there is no url
 				else {
-					strcat(entity_body, "<h1>400</h1><b>Bad Request: missing a URL.");
+					strcpy(entity_body, "<h1>400</h1><b>Bad Request: missing a URL.");
 				}
 			}
 			
@@ -282,22 +290,67 @@ int accept_client( int server_socket_fd ) {
 			// ...
 			// |\r|\n| 
 			// |entity_body|
-			else if(strstr(request, "POST")) {
-				//strcat(entity_body, "<html><body><h1>POST Operation</h1><table cellpadding=5 cellspacing=5 border=1>");
+			else if(strstr(request, "POST") != NULL) {
+				strcpy(entity_body, "<!DOCTYPE html><html><head><meta charset='UTF-8'><title>Simple Post</title></head><body><h1>POST Operation</h1>");
 				
+				// LOCATE BODY
 				char* begin_req_body = strstr(request, "\r\n\r\n");
 				int begin_req_body_inx = begin_req_body - request;
-				char* req_body_content = malloc(20000);
-				strncpy(req_body_content, request + begin_req_body_inx + 1, 10);
-				printf("%s", req_body_content);
+				//printf("\n body content: %s", begin_req_body);
 
+				// CREATE TABLE
+				char table [512] = "<table cellpadding=5 cellspacing=5 border=1><tr><td><b>";
+
+				// COUNT PAIRS
+				int num_pairs = 0;
+				for (int i = 0; i < strlen(begin_req_body); i++)
+				{
+					if (request[begin_req_body_inx + i] == '\0') break;
+					else if (request[begin_req_body_inx + i] == '&') num_pairs++;
+				}
+				// FILL TABLE
+				int pair_count = 0;
+				for(int i = 1; i < strlen(request); i++) {
+					//printf(" %c", request[begin_req_body_inx + i]);
+
+					if(request[begin_req_body_inx + i] == '\0') {
+						break;
+					}
+					else if(request[begin_req_body_inx + i] == '=') {
+						strcat(table, "</b></td><td>");
+					}
+					else if (request[begin_req_body_inx + i] == '&') {
+						if(pair_count < num_pairs) {
+							strcat(table, "</td></tr><tr><td><b>");
+							pair_count ++;
+						}
+						else {
+							strcat(table, "</td></tr>");
+						}	
+					}
+					else if (request[begin_req_body_inx + i] == '?'){
+						continue;
+					}
+					else {
+						char str_char[2];
+						str_char[0] = request[begin_req_body_inx + i];
+						str_char[1] = '\0';
+						strcat(table, str_char);
+					}
+				}
+
+				strcat(table, "</td></tr><table>");
+				strcat(entity_body, table);
+				//printf("\nEND OF POST PARSING\n");
+
+				strcat(entity_body, "</body></html>");
 			}
 
 			// ------------------------------------------------------
 			// UNKNOWN REQUEST
 			else {
 				// need to change entity body, create response, and return from method
-				strcat(entity_body, "<h1>400</h1><b>Unknown HTTP request.");
+				strcpy(entity_body, "<h1>400</h1><b>Unknown HTTP request.");
 
 				//------------------------------------------------------
 				// Package up and send off response
@@ -335,21 +388,29 @@ int accept_client( int server_socket_fd ) {
 			// NOTE: entity_body is a String, which in c is an array of char 
 			sprintf( response, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s", (int)strlen( entity_body ), entity_body );
 			
-			if ( DEBUG ) printf( "%s\n", response );
+			if ( DEBUG ) printf( "\nResponse:\n%s\n", response );
 			
 			write( client_socket_fd, response, strlen( response ) );
 			
 			close( client_socket_fd );
+			//printf("Close socket %d \n", close_status);
 			//------------------------------------------------------
 			
 			//Must exit the child process
 			exit(0);
 		}
-		
+		else if (pid > 0){
+			// parent
+			close( client_socket_fd );
+			//printf("Close socket %d \n", close_status);
+		}
+		else {
+			// forking error
+		}
+
 	} else {
-		
+		//socket error
 		exit_status = FAIL;
-		
 	}
 	
 	if ( DEBUG ) printf("Exit status = %d\n", exit_status );
