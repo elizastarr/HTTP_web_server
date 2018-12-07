@@ -1,2 +1,2 @@
-# web_server
-Create a web server in C.
+# Simple HTTP Web Server
+Created a webserver in C that can handle GET and POST methods.
